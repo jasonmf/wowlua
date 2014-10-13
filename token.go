@@ -2,8 +2,8 @@ package wowlua
 
 import (
     "bufio"
+    "errors"
     "fmt"
-    "jlog"
     "strings"
     "unicode"
 )
@@ -80,12 +80,13 @@ type Tokenizer struct {
     stack       []rune
     state       int
     scanner     *bufio.Scanner
-    callback    func(*Token)
+    callback    func(*Token) error
+    err         error
 }
 
-func NewTokenizer(s string, c func(*Token)) (*Tokenizer) {
+func NewTokenizer(s string, c func(*Token) error) (*Tokenizer) {
     if c == nil {
-        c = func(tok *Token) { fmt.Println(*tok) }
+        c = func(tok *Token) error { fmt.Println(*tok); return nil }
     }
     t := &Tokenizer{
         stack:  []rune{},
@@ -107,15 +108,21 @@ func (t *Tokenizer) Pop(pType int) {
 }
 
 func (t *Tokenizer) Emit(tok *Token) {
-    t.callback(tok)
+    if t.err != nil {
+        return
+    }
+    t.err = t.callback(tok)
 }
 
 func (t *Tokenizer) SetStateToken(state int) {
     t.state = state
 }
 
-func (t *Tokenizer) Tokenize() {
+func (t *Tokenizer) Tokenize() error {
     for t.scanner.Scan() {
+        if t.err != nil {
+            return t.err
+        }
         r := rune(t.scanner.Text()[0])
         switch t.state {
             case StateTokenNone:
@@ -146,7 +153,7 @@ func (t *Tokenizer) Tokenize() {
                         t.Push(r)
                         t.SetStateToken(StateTokenIdentifier)
                     default:
-                        jlog.Fatalf("FECK None")
+                        return errors.New("FECK None")
                 }
             case StateTokenBareHyphen:
                 switch {
@@ -157,7 +164,7 @@ func (t *Tokenizer) Tokenize() {
                         t.Push(r)
                         t.SetStateToken(StateTokenNumber)
                     default:
-                        jlog.Fatalf("FECK")
+                        return errors.New("FECK")
                 }
             case StateTokenFindNewline:
                 if r == '\n' {
@@ -209,4 +216,5 @@ func (t *Tokenizer) Tokenize() {
                 }
         }
     }
+    return nil
 }

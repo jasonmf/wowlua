@@ -1,6 +1,7 @@
 package wowlua
 
 import (
+    "errors"
     "fmt"
     "jlog"
 )
@@ -73,10 +74,10 @@ func tokenToNode(t *Token) (*Node, error) {
     return n, nil
 }
 
-func (p *Parser) Next(t *Token) {
+func (p *Parser) Next(t *Token) error {
     jlog.Debugf("Parsing Token: %v", t)
     if t.Type == TokenTypeIgnore {
-        return
+        return nil
     }
     switch t.Type {
         case TokenTypeIdentifier:
@@ -84,7 +85,9 @@ func (p *Parser) Next(t *Token) {
             switch top.nType {
             case NodeTypeTableEntry:
                 n, err := tokenToNode(t)
-                jlog.FatalIfError(err)
+                if err != nil {
+                return err
+                }
                 p.Push(n)
             default:
                 p.Next(tokenStartKey)
@@ -94,24 +97,24 @@ func (p *Parser) Next(t *Token) {
         case TokenTypeEquals:
             top := p.Peek()
             if top.nType != NodeTypeTableEntry {
-                p.bailout("Found equals with non table entry.")
+                return p.bailout("Found equals with non table entry.")
             }
             if top.value == nil {
-                p.bailout("Found equals with nil table entry.")
+                return p.bailout("Found equals with nil table entry.")
             }
             if _, ok := top.value.(*tableEntry); !ok {
-                p.bailout("Key node contains non-table entry")
+                return p.bailout("Key node contains non-table entry")
             }
         case TokenTypeStartTable:
             p.startTable()
         case TokenTypeEndTable:
             top := p.Peek()
             if top.nType != NodeTypeTable {
-                p.bailout("Ending table while not in table!")
+                return p.bailout("Ending table while not in table!")
             }
         case TokenTypeStartKey:
             if p.Peek().nType != NodeTypeTable {
-                p.bailout(fmt.Sprintf("Found start of key under %q", p.Peek()))
+                return p.bailout(fmt.Sprintf("Found start of key under %q", p.Peek()))
             }
             p.startKey()
         case TokenTypeEndKey:
@@ -119,18 +122,18 @@ func (p *Parser) Next(t *Token) {
             jlog.Debugf("Popped Key: %v", key)
             top := p.Peek()
             if top.nType != NodeTypeTableEntry {
-                p.bailout("Found end key without table entry.")
+                return p.bailout("Found end key without table entry.")
             }
             if top.value == nil {
-                p.bailout("Found end key on nil entry.")
+                return p.bailout("Found end key on nil entry.")
             }
             if e, ok := top.value.(*tableEntry); ok {
                 if e.key != nil {
-                    p.bailout("Found end key with key already set.")
+                    return p.bailout("Found end key with key already set.")
                 }
                 e.key = key
             } else {
-                p.bailout("Found end key on non-table-entry")
+                return p.bailout("Found end key on non-table-entry")
             }
         case TokenTypeComma:
             v := p.Pop()
@@ -141,38 +144,42 @@ func (p *Parser) Next(t *Token) {
                     p.Pop()
                     top = p.Peek()
                     if top.nType != NodeTypeTable {
-                        p.bailout("Key not in table!")
+                        return p.bailout("Key not in table!")
                     }
                     if table, ok := top.value.(*Table); ok {
                         table.Set(e.key, v)
                     } else {
-                        p.bailout("Expected table node on top of stack.")
+                        return p.bailout("Expected table node on top of stack.")
                     }
                 } else {
-                    p.bailout("TableEntryValue not tableEntry!")
+                    return p.bailout("TableEntryValue not tableEntry!")
                 }
             case NodeTypeTable:
                 top.GetTable().AddIndexed(v)
             default:
-                p.bailout("Comma found outside table, table key")
+                return p.bailout("Comma found outside table, table key")
             }
         case TokenTypeString:
-            p.handleValueToken(t)
+            return p.handleValueToken(t)
         case TokenTypeNumber:
-            p.handleValueToken(t)
+            return p.handleValueToken(t)
         default:
             jlog.Debugf("Unhandled token type: %q", t)
     }
+    return nil
 }
 
-func (p *Parser) handleValueToken(t *Token) {
+func (p *Parser) handleValueToken(t *Token) error {
     top := p.Peek()
     if top.nType != NodeTypeTable && top.nType != NodeTypeTableEntry {
-        p.bailout(fmt.Sprintf("Found value %q outside of table/key!", t))
+        return p.bailout(fmt.Sprintf("Found value %q outside of table/key!", t))
     }
     n, err := tokenToNode(t)
-    jlog.FatalIfError(err)
+    if err != nil {
+        return err
+    }
     p.Push(n)
+    return nil
 }
 
 func (p *Parser) unwind() {
@@ -187,29 +194,29 @@ func (p *Parser) dumpstack() {
     }
 }
 
-func (p *Parser) bailout(msg string) {
+func (p *Parser) bailout(msg string) error {
     jlog.Errorf("BAILING OUT!")
     p.unwind()
-    jlog.Fatalf(msg)
+    return errors.New(msg)
 }
 
-func (p *Parser) Finish() *Table {
+func (p *Parser) Finish() (*Table, error) {
     for n := p.Pop(); n != nil; n = p.Pop() {
         top := p.Peek()
         switch n.nType {
         case NodeTypeTableEntry:
             if e, ok := n.value.(*tableEntry); ok {
                 if top.nType != NodeTypeTable {
-                    p.bailout("Key not in table!")
+                    return nil, p.bailout("Key not in table!")
                 }
                 if table, ok := top.value.(*Table); ok {
                     table.Set(e.key, e.value)
                 } else {
-                    p.bailout("Expected table node on top of stack.")
+                    return nil, p.bailout("Expected table node on top of stack.")
                 }
             } else {
                 jlog.Debugf("Stack Popped: ", n)
-                p.bailout("TableEntryValue not tableEntry!")
+                return nil, p.bailout("TableEntryValue not tableEntry!")
             }
         default:
             if top != nil {
@@ -218,28 +225,31 @@ func (p *Parser) Finish() *Table {
                     if e, ok := top.value.(*tableEntry); ok {
                         e.value = n
                     } else {
-                        p.bailout("Top is marked tableEntry but isn't a *tableEntry")
+                        return nil, p.bailout("Top is marked tableEntry but isn't a *tableEntry")
                     }
                 default:
-                    p.bailout("SHIT BROKE SON")
+                    return nil, p.bailout("SHIT BROKE SON")
                 }
             } else {
                 jlog.Debugf("--> TOP is NIL <--")
                 if t, ok := n.value.(*Table); ok {
-                    return t
+                    return t, nil
                 }
             }
         }
             
     }
 
-    jlog.Errorf("Final result not a table!")
-    return nil
+    err := errors.New("Final result not a table!")
+    jlog.Errorf(err.Error())
+    return nil, err
 }
 
-func ParseLua(data string) *Table {
+func ParseLua(data string) (*Table, error) {
     p := NewParser()
     t := NewTokenizer(data, p.Next)
-    t.Tokenize()
+    if err := t.Tokenize(); err != nil {
+        return nil, err
+    }
     return p.Finish()
 }
