@@ -8,6 +8,7 @@ import (
 var (
     ErrNotFound = errors.New("Node not found")
     ErrNotTable = errors.New("Node not a table")
+    ErrWrongType = errors.New("Node is wrong type")
 )
 
 type Table struct {
@@ -31,6 +32,10 @@ func (t *Table) String() string {
     return strings.Join(entryStrs, "\n") + "}"
 }
 
+func (t *Table) HasKeyByString(s string) bool {
+    return t.HasKey(&Node{ nType: NodeTypeString, value: s })
+}
+
 func (t *Table) HasKey(k *Node) bool {
     return t.getEntry(k) != nil
 }
@@ -51,6 +56,28 @@ func (t *Table) getEntry(k *Node) *tableEntry {
         }
     }
     return nil
+}
+
+func (t *Table) GetStringByString(s string) (string, error) {
+    n := t.GetByString(s)
+    if n == nil {
+        return "", ErrNotFound
+    }
+    if n.GetType() != NodeTypeString {
+        return "", ErrWrongType
+    }
+    return n.GetString(), nil
+}
+
+func (t *Table) GetFloat64ByString(s string) (float64, error) {
+    n := t.GetByString(s)
+    if n == nil {
+        return NaN, ErrNotFound
+    }
+    if n.GetType() != NodeTypeNumber {
+        return NaN, ErrWrongType
+    }
+    return n.GetFloat64(), nil
 }
 
 func (t *Table) GetByString(s string) *Node {
