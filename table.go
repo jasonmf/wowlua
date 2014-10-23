@@ -116,7 +116,7 @@ func (t *Table) GetPath(path ...*Node) (*Table, *Node, error) {
 }
 
 func (t *Table) Keys() []*Node {
-    keys := make([]*Node, len(t.entries))
+    keys := make([]*Node, t.Length())
     for i, e := range t.entries {
         keys[i] = e.key
     }
@@ -124,7 +124,7 @@ func (t *Table) Keys() []*Node {
 }
 
 func (t *Table) AddIndexed(n *Node) int {
-    i := len(t.entries)
+    i := t.Length()
     k := &Node{ nType: NodeTypeNumber, value: i }
     t.Set(k, n)
     return i
@@ -148,6 +148,10 @@ func (t *Table) Equals(o *Table) bool {
         }
     }
     return true
+}
+
+func (t *Table) Length() int {
+    return len(t.entries)
 }
 
 type tableEntry struct {
