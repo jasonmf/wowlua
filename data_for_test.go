@@ -1,7 +1,7 @@
 package wowlua
 
 const (
-    sample_data = `
+	sample_data = `
 HarbingerTools_Events = {
 	["Characters"] = {
 		["Moon Guard"] = {
