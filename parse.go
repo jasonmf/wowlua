@@ -3,13 +3,14 @@ package wowlua
 import (
 	"errors"
 	"fmt"
-	"jlog"
 )
 
+// Parser handles parsing tokens into Nodes
 type Parser struct {
 	stack []*Node
 }
 
+// NewParser creates a new parser.
 func NewParser() *Parser {
 	p := &Parser{
 		stack: make([]*Node, 0),
@@ -18,10 +19,12 @@ func NewParser() *Parser {
 	return p
 }
 
+// Push a node onto the current parse stack
 func (p *Parser) Push(n *Node) {
 	p.stack = append(p.stack, n)
 }
 
+// Pop a node off the current parse stack. Returns nil if the stack is empty.
 func (p *Parser) Pop() *Node {
 	sLen := len(p.stack)
 	if sLen == 0 {
@@ -32,6 +35,8 @@ func (p *Parser) Pop() *Node {
 	return n
 }
 
+// Peek returns the node on top of the stack without removing it. It returns
+// nil if the stack is empty.
 func (p *Parser) Peek() *Node {
 	sLen := len(p.stack)
 	if sLen == 0 {
@@ -57,25 +62,26 @@ func tokenToNode(t *Token) (*Node, error) {
 	case TokenTypeIdentifier:
 		switch t.Value {
 		case "true":
-			n = NewNode(NodeTypeBoolean, true)
+			n = NewNode(NodeTypeBool, true)
 		case "false":
-			n = NewNode(NodeTypeBoolean, false)
+			n = NewNode(NodeTypeBool, false)
 		default:
 			n = NewNode(NodeTypeString, t.Value)
 		}
 	case TokenTypeString:
 		n = NewNode(NodeTypeString, t.Value)
 	case TokenTypeNumber:
-		jlog.Debugf("TokenToNode: %q", t)
+		logger.Debugf("TokenToNode: %q", t)
 		n = NewNode(NodeTypeNumber, t.Value)
 	default:
-		return nil, fmt.Errorf("Can't convert this token: %q", t)
+		return nil, fmt.Errorf("can't convert this token: %q", t)
 	}
 	return n, nil
 }
 
+// Next parses the next token
 func (p *Parser) Next(t *Token) error {
-	jlog.Debugf("Parsing Token: %v", t)
+	logger.Debugf("Parsing Token: %v", t)
 	if t.Type == TokenTypeIgnore {
 		return nil
 	}
@@ -119,7 +125,7 @@ func (p *Parser) Next(t *Token) error {
 		p.startKey()
 	case TokenTypeEndKey:
 		key := p.Pop()
-		jlog.Debugf("Popped Key: %v", key)
+		logger.Debugf("Popped Key: %v", key)
 		top := p.Peek()
 		if top.nType != NodeTypeTableEntry {
 			return p.bailout("Found end key without table entry.")
@@ -164,7 +170,7 @@ func (p *Parser) Next(t *Token) error {
 	case TokenTypeNumber:
 		return p.handleValueToken(t)
 	default:
-		jlog.Debugf("Unhandled token type: %q", t)
+		logger.Debugf("Unhandled token type: %q", t)
 	}
 	return nil
 }
@@ -184,22 +190,23 @@ func (p *Parser) handleValueToken(t *Token) error {
 
 func (p *Parser) unwind() {
 	for n := p.Pop(); n != nil; n = p.Pop() {
-		jlog.Debugf("Stack: %v", n)
+		logger.Debugf("Stack: %v", n)
 	}
 }
 
 func (p *Parser) dumpstack() {
 	for i := len(p.stack) - 1; i > -1; i-- {
-		jlog.Debugf("Stack Dump: %v", p.stack[i])
+		logger.Debugf("Stack Dump: %v", p.stack[i])
 	}
 }
 
 func (p *Parser) bailout(msg string) error {
-	jlog.Errorf("BAILING OUT!")
+	logger.Errorf("BAILING OUT!")
 	p.unwind()
 	return errors.New(msg)
 }
 
+// Finish parses all available tokens and returns the resulting table.
 func (p *Parser) Finish() (*Table, error) {
 	for n := p.Pop(); n != nil; n = p.Pop() {
 		top := p.Peek()
@@ -215,7 +222,7 @@ func (p *Parser) Finish() (*Table, error) {
 					return nil, p.bailout("Expected table node on top of stack.")
 				}
 			} else {
-				jlog.Debugf("Stack Popped: ", n)
+				logger.Debugf("Stack Popped: ", n)
 				return nil, p.bailout("TableEntryValue not tableEntry!")
 			}
 		default:
@@ -231,7 +238,7 @@ func (p *Parser) Finish() (*Table, error) {
 					return nil, p.bailout("SHIT BROKE SON")
 				}
 			} else {
-				jlog.Debugf("--> TOP is NIL <--")
+				logger.Debugf("--> TOP is NIL <--")
 				if t, ok := n.value.(*Table); ok {
 					return t, nil
 				}
@@ -240,11 +247,12 @@ func (p *Parser) Finish() (*Table, error) {
 
 	}
 
-	err := errors.New("Final result not a table!")
-	jlog.Errorf(err.Error())
+	err := errors.New("final result not a table")
+	logger.Errorf(err.Error())
 	return nil, err
 }
 
+// ParseLua handles end to end parsing of a string containing Lua table data
 func ParseLua(data string) (*Table, error) {
 	p := NewParser()
 	t := NewTokenizer(data, p.Next)

@@ -9,8 +9,9 @@ func TestMultipleTopLevelValues(t *testing.T) {
 	if err != nil {
 		t.Errorf("Unexpected error parsing data: %q", err)
 	}
+	t.Logf("got keys: %v", tab.Keys())
 	expected_length := 2
-	length := tab.Length()
+	length := tab.Len()
 	if length != expected_length {
 		t.Errorf("Expected table to have %v entries, got %v", expected_length, length)
 	}
