@@ -116,7 +116,24 @@ func (p *Parser) Next(t *Token) error {
 	case TokenTypeEndTable:
 		top := p.Peek()
 		if top.nType != NodeTypeTable {
-			return p.bailout("Ending table while not in table!")
+			v := p.Pop()
+			top = p.Peek()
+			if top.nType == NodeTypeTableEntry {
+				if e, ok := top.value.(*tableEntry); ok {
+					p.Pop()
+					top = p.Peek()
+					if top.nType != NodeTypeTable {
+						return p.bailout("Key not in table, when closing the table!")
+					}
+					if table, ok := top.value.(*Table); ok {
+						table.Set(e.key, v)
+					} else {
+						return p.bailout("Expected table node on top of stack.")
+					}
+				} else {
+					return p.bailout("TableEntryValue not tableEntry!")
+				}
+			}
 		}
 	case TokenTypeStartKey:
 		if p.Peek().nType != NodeTypeTable {
